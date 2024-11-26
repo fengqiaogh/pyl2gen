@@ -1,0 +1,7 @@
+# Define a few useful BAD values
+
+BAD_FLT = -32767.0
+BAD_INT = -32767
+BAD_UINT = 65535
+BAD_BYTE = -128
+BAD_UBYTE = 255
