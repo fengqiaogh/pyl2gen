@@ -3,7 +3,7 @@ from pathlib import Path
 
 import h5py
 
-from genutils_globals import want_verbose
+from oel_util.libgenutils.genutils_globals import want_verbose
 from sensorDefs import GOCI
 
 
