@@ -1,9 +1,10 @@
 import math
 from datetime import datetime
-import pandas as pd
 import numpy as np
 import h5py
 from libl1.l1 import L1str
+from oel_util.libgenutils.genutils_globals import want_verbose
+from pyproj import CRS, Transformer
 
 # from ..get_zenaz import get_zenaz
 # from ..sunangs import sunangs
@@ -15,14 +16,12 @@ class GOCIL1:
     TABLE_NAME = "Navigation for GOCI"
 
     def __init__(self):
-        self.year = 2020
-        self.doy = 95
-
-        self.lon = np.array([114.456573, 114.456573])
-        self.lat = np.array([35.4573326, 35.4573326])
+        self.slot_asg = None
+        self.slot_rel_time = None
         self.sat_pos = np.zeros(3)
 
-    def open(self, src_path):
+    def open(self, file):
+        src_path = file.name
         fields = [
             "Band 1 Image Pixel Values",
             "Band 2 Image Pixel Values",
@@ -33,8 +32,9 @@ class GOCIL1:
             "Band 7 Image Pixel Values",
             "Band 8 Image Pixel Values",
         ]
+        dims = np.zeros(3, dtype=np.int32)
         with h5py.File(src_path) as f:
-            dims = np.zeros(3, dtype=np.int32)
+
             dims[1] = f["HDFEOS/POINTS/Scene Header"].attrs["number of columns"][0]
             dims[0] = f["HDFEOS/POINTS/Scene Header"].attrs["number of rows"][0]
             self.npixels = dims[1]
@@ -47,8 +47,69 @@ class GOCIL1:
             radius_in_xy = cpos[0] * np.cos(cpos[2]) / 1000
             self.sat_pos[1] = radius_in_xy * np.sin(cpos[1])
             self.sat_pos[0] = radius_in_xy * np.cos(cpos[1])
+            time_str = f["HDFEOS/POINTS/Ephemeris"].attrs["Scene Start time"]
 
-        slot_asg, slot_rel_time = slot_init(src_path, dims)
+        self.slot_asg, self.slot_rel_time = slot_init(src_path, dims)
+        if want_verbose:
+            print(f"GOCI Level-1B {file.name}")
+        file.npix = self.npixels
+        file.nscan = self.nscans
+        file.bands = self.nbands
+        file.spatialResolution = "500 m"
+
+        self.get_datetime(time_str)
+        if want_verbose:
+            print(
+                f"GOCI Scene Start time: {self.year:4d}-{self.month:02d}-{self.day:02d} {self.doy:03d} {self.hour:02d}:{self.minute:02d}:{self.second:02d} {self.base_msec}"
+            )
+            print(
+                f"GOCI file has {file.nbands} bands, {file.npix} samples, {file.nscan} lines"
+            )
+
+        with h5py.File(src_path) as f:
+            self.proj4_open(f)
+        if want_verbose:
+            print("GOCI using internal navigation")
+
+    def proj4_open(self, f):
+        # read Map Projection attributes
+        map_proj = "/HDFEOS/POINTS/Map Projection"
+        centralLat = f[map_proj].attrs["Central Latitude (parallel)"][0]
+        centralLon = f[map_proj].attrs["Central Longitude (meridian)"][0]
+        equitorialRadius = f[map_proj].attrs["Equitorial radius of Earth ellipsoid"][0]
+        polarRadius = f[map_proj].attrs["Polar radius of Earth ellipsoid"][0]
+
+        # read Scene Header attributes
+        sce_hea = "/HDFEOS/POINTS/Scene Header"
+        llLat = f[sce_hea].attrs["Scene lower-left latitude"]
+        llLon = f[sce_hea].attrs["Scene lower-left longitude"]
+        urLat = f[sce_hea].attrs["Scene upper-right latitude"]
+        urLon = f[sce_hea].attrs["Scene upper-right longitude"]
+        projStr = f"+proj=ortho +ellps=WGS84 +datum=WGS84 +lon_0={centralLon} +lat_0={centralLat} +a={equitorialRadius} +b={polarRadius}"
+        target_proj = CRS.from_proj4(projStr)
+        source_proj = CRS.from_proj4("+proj=longlat +ellps=WGS84 +datum=WGS84")
+        transformer = Transformer.from_crs(source_proj, target_proj, always_xy=True)
+
+        # Calculate start and delta for the grid
+        ll_trans = transformer.transform(llLon, llLat)
+        ur_trans = transformer.transform(urLon, urLat)
+
+        self.startX = ll_trans[0]
+        self.startY = ur_trans[1]
+        self.deltaX = (ur_trans[0] - ll_trans[0]) / self.npixels
+        self.deltaY = (ll_trans[1] - ur_trans[1]) / self.nscans
+
+    def get_datetime(self, time_str):
+        time_str = time_str.decode("utf-8")
+        time_obj = datetime.strptime(time_str, "%d-%b-%Y %H:%M:%S.%f")
+        self.year = time_obj.year
+        self.month = time_obj.month
+        self.day = time_obj.day
+        self.hour = time_obj.hour
+        self.minute = time_obj.minute
+        self.second = time_obj.second
+        self.doy = time_obj.timetuple().tm_yday
+        self.base_msec = 1000 * (self.second + 60 * (self.minute + 60 * self.hour))
 
 
 def slot_init(file_path, dims):
