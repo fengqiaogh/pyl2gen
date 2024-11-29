@@ -1,7 +1,7 @@
 import datetime
 import math
 
-from libgenutils.genutils import BAD_FLT, BAD_INT
+from oel_util.libgenutils.genutils import BAD_FLT, BAD_INT
 
 
 def unix2yds(usec):

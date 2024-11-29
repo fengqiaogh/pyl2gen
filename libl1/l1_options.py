@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from filetype import FileFormat
-from genutils_globals import want_verbose
+from oel_hdf4.filetype.filetype import FileFormat
+from oel_util.libgenutils.genutils_globals import want_verbose
 from libl1.filehandle import Filehandle
 from sensorInfo import SensorInfo
 

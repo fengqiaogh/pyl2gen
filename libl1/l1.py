@@ -1,12 +1,12 @@
 import numpy as np
 
 from esdist import esdist
-from filetype import FileType
+from oel_hdf4.filetype.filetype import FileType
 
 FATAL_ERROR = 1
 
 
-class L1Str:
+class L1str:
     def __init__(self):
         self.length = ""  # number of bytes allocated to data block */
         self.npix = ""
