@@ -37,3 +37,6 @@ cd build
 cmake ..
 make
 ```
+
+# TODO
+- [ ] use ChainMap for config setting
