@@ -2,39 +2,39 @@ import math
 from datetime import datetime
 import numpy as np
 import h5py
-from libl1.l1 import L1str
 from oel_util.libgenutils.genutils_globals import want_verbose
 from pyproj import CRS, Transformer
-
-# from ..get_zenaz import get_zenaz
-# from ..sunangs import sunangs
+from pysolar.solar import get_altitude, get_azimuth
+import pytz
+from oel_hdf4.libnav.get_zenaz import get_zenaz
 
 
 class GOCIL1:
     nbands = 8
     NAV_GRP = "HDFEOS/POINTS/Navigation for GOCI/Data"
     TABLE_NAME = "Navigation for GOCI"
+    FIELDS = [
+        "Band 1 Image Pixel Values",
+        "Band 2 Image Pixel Values",
+        "Band 3 Image Pixel Values",
+        "Band 4 Image Pixel Values",
+        "Band 5 Image Pixel Values",
+        "Band 6 Image Pixel Values",
+        "Band 7 Image Pixel Values",
+        "Band 8 Image Pixel Values",
+    ]
 
     def __init__(self):
+        self.nslot = 16
         self.slot_asg = None
         self.slot_rel_time = None
         self.sat_pos = np.zeros(3)
 
-    def open(self, file):
-        src_path = file.name
-        fields = [
-            "Band 1 Image Pixel Values",
-            "Band 2 Image Pixel Values",
-            "Band 3 Image Pixel Values",
-            "Band 4 Image Pixel Values",
-            "Band 5 Image Pixel Values",
-            "Band 6 Image Pixel Values",
-            "Band 7 Image Pixel Values",
-            "Band 8 Image Pixel Values",
-        ]
+    def open(self, level1):
+        src_path = level1.name
+
         dims = np.zeros(3, dtype=np.int32)
         with h5py.File(src_path) as f:
-
             dims[1] = f["HDFEOS/POINTS/Scene Header"].attrs["number of columns"][0]
             dims[0] = f["HDFEOS/POINTS/Scene Header"].attrs["number of rows"][0]
             self.npixels = dims[1]
@@ -49,27 +49,52 @@ class GOCIL1:
             self.sat_pos[0] = radius_in_xy * np.cos(cpos[1])
             time_str = f["HDFEOS/POINTS/Ephemeris"].attrs["Scene Start time"]
 
+            latitudes, longitudes = self.proj4_open(f)
+        level1.lat = latitudes
+        level1.lon = longitudes
+
         self.slot_asg, self.slot_rel_time = slot_init(src_path, dims)
+
         if want_verbose:
-            print(f"GOCI Level-1B {file.name}")
-        file.npix = self.npixels
-        file.nscan = self.nscans
-        file.bands = self.nbands
-        file.spatialResolution = "500 m"
+            print(f"GOCI Level-1B {level1.name}")
+        level1.npix = self.npixels
+        level1.nscan = self.nscans
+        level1.bands = self.nbands
+        level1.spatialResolution = "500 m"
 
         self.get_datetime(time_str)
         if want_verbose:
             print(
-                f"GOCI Scene Start time: {self.year:4d}-{self.month:02d}-{self.day:02d} {self.doy:03d} {self.hour:02d}:{self.minute:02d}:{self.second:02d} {self.base_msec}"
+                f"GOCI Scene Start time: {self.time_obj_utc.year:4d}-{self.time_obj_utc.month:02d}-{self.time_obj_utc.day:02d} {self.time_obj_utc.timetuple().tm_yday:03d} {self.time_obj_utc.hour:02d}:{self.time_obj_utc.minute:02d}:{self.time_obj_utc.second:02d}"
             )
             print(
-                f"GOCI file has {file.nbands} bands, {file.npix} samples, {file.nscan} lines"
+                f"GOCI file has {level1.nbands} bands, {level1.npix} samples, {level1.nscan} lines"
             )
 
-        with h5py.File(src_path) as f:
-            self.proj4_open(f)
         if want_verbose:
             print("GOCI using internal navigation")
+
+        solz, sola = self.sunangs(latitudes, longitudes)
+        sola[sola > 180] = sola[sola > 180] - 360
+        level1.solz = solz
+        level1.sola = sola
+
+        senz, sena = get_zenaz(self.sat_pos, longitudes, latitudes)
+        sena[sena > 180] = sena[sena > 180] - 360
+        level1.senz = senz
+        level1.sena = sena
+
+    def sunangs(self, latitudes, longitudes):
+        solz = np.zeros((self.nscans, self.npixels), np.float32)
+        sola = np.zeros((self.nscans, self.npixels), np.float32)
+        for i in range(self.nslot):
+            lat = latitudes[self.slot_asg == i]
+            lon = longitudes[self.slot_asg == i]
+            realtime = self.time_obj_utc.timestamp() + int(self.slot_rel_time[i])
+            dt = datetime.fromtimestamp(realtime, tz=pytz.utc)
+            solz[self.slot_asg == i] = 90 - get_altitude(lat, lon, dt)
+            sola[self.slot_asg == i] = get_azimuth(lat, lon, dt)
+        return solz, sola
 
     def proj4_open(self, f):
         # read Map Projection attributes
@@ -94,22 +119,31 @@ class GOCIL1:
         ll_trans = transformer.transform(llLon, llLat)
         ur_trans = transformer.transform(urLon, urLat)
 
-        self.startX = ll_trans[0]
-        self.startY = ur_trans[1]
-        self.deltaX = (ur_trans[0] - ll_trans[0]) / self.npixels
-        self.deltaY = (ll_trans[1] - ur_trans[1]) / self.nscans
+        startX = ll_trans[0]
+        startY = ur_trans[1]
+        deltaX = (ur_trans[0] - ll_trans[0]) / self.npixels
+        deltaY = (ur_trans[1] - ll_trans[1]) / self.nscans
+
+        # Generate meshgrid of column (j) and row (i) indices
+        j_indices = np.arange(self.npixels)
+        i_indices = np.arange(self.nscans)
+
+        # Calculate the X and Y coordinates for the entire grid
+        X_grid, Y_grid = np.meshgrid(
+            startX + j_indices * deltaX, startY - i_indices * deltaY
+        )
+
+        # Batch transform the X and Y coordinates to latitudes and longitudes
+        longitudes, latitudes = transformer.transform(
+            X_grid, Y_grid, direction="INVERSE"
+        )
+
+        return latitudes, longitudes
 
     def get_datetime(self, time_str):
         time_str = time_str.decode("utf-8")
         time_obj = datetime.strptime(time_str, "%d-%b-%Y %H:%M:%S.%f")
-        self.year = time_obj.year
-        self.month = time_obj.month
-        self.day = time_obj.day
-        self.hour = time_obj.hour
-        self.minute = time_obj.minute
-        self.second = time_obj.second
-        self.doy = time_obj.timetuple().tm_yday
-        self.base_msec = 1000 * (self.second + 60 * (self.minute + 60 * self.hour))
+        self.time_obj_utc = time_obj.replace(tzinfo=pytz.UTC)
 
 
 def slot_init(file_path, dims):
@@ -240,25 +274,6 @@ def slot_init(file_path, dims):
 
     print("GOCI slot, time assignments completed.")
     return slot_asg, slot_rel_time
-
-    def read(self, file, l1rec: L1str):
-        npix = file.npix
-        nbands = file.nbands
-        msec = base_msec
-        # 将字符串转换为 datetime 对象
-        date_str = "20200404051643"
-        date_obj = datetime.strptime(date_str, "%Y%m%d%H%M%S")
-        # 计算当天零点的 datetime 对象
-        midnight = datetime(date_obj.year, date_obj.month, date_obj.day)
-
-        # 计算给定时间距离当天零点的秒数
-        seconds_since_midnight = (date_obj - midnight).total_seconds()
-        gmt = seconds_since_midnight / 3600.0
-
-        solz, sola = sunangs(self.year, self.doy, gmt, self.lon, self.lat)
-        sola[sola > 180] = sola[sola > 180] - 360
-        senz, sena = get_zenaz(self.sat_pos, self.lon, self.lat)
-        sena[sena > 180] = sena[sena > 180] - 360
 
 
 def goci_slot_nav(ipix, ilin, bnd, itile, slot_nav, nbnd, nslot, bnd_tile_lut):
