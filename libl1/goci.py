@@ -1,44 +1,47 @@
-import math
 from datetime import datetime
-import numpy as np
+
 import h5py
-from oel_util.libgenutils.genutils_globals import want_verbose
+import numpy as np
+import pytz
 from pyproj import CRS, Transformer
 from pysolar.solar import get_altitude, get_azimuth
-import pytz
+
 from oel_hdf4.libnav.get_zenaz import get_zenaz
+from oel_util.libgenutils.genutils_globals import want_verbose
 
 
 class GOCIL1:
-    nbands = 8
-    NAV_GRP = "HDFEOS/POINTS/Navigation for GOCI/Data"
-    TABLE_NAME = "Navigation for GOCI"
-    FIELDS = [
-        "Band 1 Image Pixel Values",
-        "Band 2 Image Pixel Values",
-        "Band 3 Image Pixel Values",
-        "Band 4 Image Pixel Values",
-        "Band 5 Image Pixel Values",
-        "Band 6 Image Pixel Values",
-        "Band 7 Image Pixel Values",
-        "Band 8 Image Pixel Values",
-    ]
 
     def __init__(self):
         self.nslot = 16
         self.slot_asg = None
         self.slot_rel_time = None
         self.sat_pos = np.zeros(3)
+        self.nscans = None
+        self.npixels = None
+        self.nbands = 8
 
-    def open(self, level1):
-        src_path = level1.name
+        self.NAV_GRP = "HDFEOS/POINTS/Navigation for GOCI/Data"
+        self.TABLE_NAME = "Navigation for GOCI"
+        self.FIELDS = [
+            "Band 1 Image Pixel Values",
+            "Band 2 Image Pixel Values",
+            "Band 3 Image Pixel Values",
+            "Band 4 Image Pixel Values",
+            "Band 5 Image Pixel Values",
+            "Band 6 Image Pixel Values",
+            "Band 7 Image Pixel Values",
+            "Band 8 Image Pixel Values",
+        ]
+
+    def open(self, name):
 
         dims = np.zeros(3, dtype=np.int32)
-        with h5py.File(src_path) as f:
+        with h5py.File(name) as f:
             dims[1] = f["HDFEOS/POINTS/Scene Header"].attrs["number of columns"][0]
             dims[0] = f["HDFEOS/POINTS/Scene Header"].attrs["number of rows"][0]
-            self.npixels = dims[1]
             self.nscans = dims[0]
+            self.npixels = dims[1]
 
             cpos = f["HDFEOS/POINTS/Ephemeris"].attrs[
                 "Satellite position XYZ (ECEF) at scene center time"
@@ -49,18 +52,12 @@ class GOCIL1:
             self.sat_pos[0] = radius_in_xy * np.cos(cpos[1])
             time_str = f["HDFEOS/POINTS/Ephemeris"].attrs["Scene Start time"]
 
-            latitudes, longitudes = self.proj4_open(f)
-        level1.lat = latitudes
-        level1.lon = longitudes
+            self.latitudes, self.longitudes = self.proj4_open(f)
 
-        self.slot_asg, self.slot_rel_time = slot_init(src_path, dims)
+        self.slot_asg, self.slot_rel_time = slot_init(name, dims)
 
         if want_verbose:
-            print(f"GOCI Level-1B {level1.name}")
-        level1.npix = self.npixels
-        level1.nscan = self.nscans
-        level1.bands = self.nbands
-        level1.spatialResolution = "500 m"
+            print(f"GOCI Level-1B {name}")
 
         self.get_datetime(time_str)
         if want_verbose:
@@ -68,21 +65,21 @@ class GOCIL1:
                 f"GOCI Scene Start time: {self.time_obj_utc.year:4d}-{self.time_obj_utc.month:02d}-{self.time_obj_utc.day:02d} {self.time_obj_utc.timetuple().tm_yday:03d} {self.time_obj_utc.hour:02d}:{self.time_obj_utc.minute:02d}:{self.time_obj_utc.second:02d}"
             )
             print(
-                f"GOCI file has {level1.nbands} bands, {level1.npix} samples, {level1.nscan} lines"
+                f"GOCI file has {self.nbands} bands, {self.npixels} samples, {self.nscans} lines"
             )
 
         if want_verbose:
             print("GOCI using internal navigation")
 
-        solz, sola = self.sunangs(latitudes, longitudes)
+        solz, sola = self.sunangs(self.latitudes, self.longitudes)
         sola[sola > 180] = sola[sola > 180] - 360
-        level1.solz = solz
-        level1.sola = sola
+        self.solz = solz
+        self.sola = sola
 
-        senz, sena = get_zenaz(self.sat_pos, longitudes, latitudes)
+        senz, sena = get_zenaz(self.sat_pos, self.longitudes, self.latitudes)
         sena[sena > 180] = sena[sena > 180] - 360
-        level1.senz = senz
-        level1.sena = sena
+        self.senz = senz
+        self.sena = sena
 
     def sunangs(self, latitudes, longitudes):
         solz = np.zeros((self.nscans, self.npixels), np.float32)

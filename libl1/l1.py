@@ -1,32 +1,40 @@
 import numpy as np
-from libl1.goci import GOCIL1
+
 from esdist import esdist
+from libl1.goci import GOCIL1
 from oel_hdf4.filetype.filetype import FileType
 
 FATAL_ERROR = 1
 
 
-def readl1(level1):
-    match level1.format:
-        case FileType.FT_GOCIL1B:
-            gocil1 = GOCIL1()
-            gocil1.open(level1)
-        case _:
-            print(f"readl1 - Unknown L1 input file format specifier: {level1.format}")
-
-
 class Level1:
     def __init__(self):
-        pass
+        self.name = None
+        self.format = None
 
-    def load(self, l1_input="", l1file=""):
+    def read(self):
+        match self.format:
+            case FileType.FT_GOCIL1B:
+                sensor_l1 = GOCIL1()
+                sensor_l1.open(self.name)
 
-        yr = year
-        dy = day
-        ms = int(sec * 1.0e3)
+                self.spatialResolution = "500 m"
 
-        # Apply vicarious calibration
-        l1rec.Lt = l1rec.Lt * l1_input.gain + l1_input.offset
+            case _:
+                print(
+                    f"readl1 - Unknown L1 input file format specifier: {level1.format}"
+                )
+        self.npix = sensor_l1.npixels
+        self.nscan = sensor_l1.nscans
+        self.bands = sensor_l1.nbands
+        self.lat = sensor_l1.latitudes
+        self.lon = sensor_l1.longitudes
+        self.solz = sensor_l1.solz
+        self.csolz = np.cos(np.deg2rad(self.solz))
+        self.sola = sensor_l1.sola
+        self.senz = sensor_l1.senz
+        self.csenz = np.cos(np.deg2rad(self.senz))
+        self.sena = sensor_l1.sena
 
         # Compute relative azimuth
         delphi = self.sena - 180.0 - self.sola
@@ -34,17 +42,16 @@ class Level1:
         delphi[delphi > 180.0] = delphi[delphi > 180.0] - 360.0
         self.delphi = delphi
 
-        # Precompute frequently used trig relations
-        self.csolz = np.cos(np.deg2rad(self.solz))
-        self.csenz = np.cos(np.deg2rad(self.senz))
+        # Apply vicarious calibration
+        # self.Lt = self.Lt * l1_input.gain + l1_input.offset
 
         # Scattering angle
-        """
-        temp = sqrt((1.0 - l1rec->csenz[ip] * l1rec->csenz[ip])*(1.0 - l1rec->csolz[ip] * l1rec->csolz[ip]))
-                * cos(l1rec->delphi[ip] / radeg);
-        l1rec->scattang[ip] = acos(MAX(-l1rec->csenz[ip] * l1rec->csolz[ip] + temp, -1.0)) * radeg;
 
-        """
+        temp = np.sqrt(
+            (1.0 - self.csenz * self.csenz) * (1.0 - self.csolz * self.csolz)
+        ) * np.cos(np.deg2rad(self.delphi))
+        scattang = np.acos(np.max(-self.csenz * self.csolz + temp, -1.0))
+        self.scattang = np.rad2deg(scattang)
 
 
 """
