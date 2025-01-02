@@ -33,6 +33,8 @@ class GOCIL1:
             "Band 7 Image Pixel Values",
             "Band 8 Image Pixel Values",
         ]
+        self.Lt = None
+        self.time_obj_utc = None
 
     def open(self, name):
 
@@ -53,6 +55,11 @@ class GOCIL1:
             time_str = f["HDFEOS/POINTS/Ephemeris"].attrs["Scene Start time"]
 
             self.latitudes, self.longitudes = self.proj4_open(f)
+
+            self.Lt = np.zeros((self.nscans, self.npixels, self.nbands))
+            for idx, field in enumerate(self.FIELDS):
+                data = f[f"HDFEOS/GRIDS/Image Data/Data Fields/{field}"][()]
+                self.Lt[:, :, idx] = data * 1e-7
 
         self.slot_asg, self.slot_rel_time = slot_init(name, dims)
 
