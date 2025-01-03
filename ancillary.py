@@ -3,8 +3,7 @@ from datetime import datetime
 import h5py
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator as RGI
-
-from l12_parms import N2O_BIT
+from l12_parms import NO2_BIT
 
 
 class Ancillary:
@@ -96,7 +95,7 @@ class Ancillary:
         self.oz = oz / 1000.0
 
         # no2 and fraction
-        if settings["gas_opt"] & N2O_BIT:
+        if settings["gas_opt"] & NO2_BIT:
             no2_tropo, no2_strat = no2conc(self.no2file, lon, lat, dt.month)
             self.no2_tropo = no2_tropo * 1e15
             self.no2_strat = no2_strat * 1e15
@@ -111,18 +110,19 @@ class Ancillary:
 
 def no2_frac_(no2_frac_file, lon, lat):
     print(f"Opening NO2 frac file {no2_frac_file}")
-    tab_lon = np.linspace(-180, 180, 180)
-    tab_lat = -np.linspace(-90, 90, 90)
+    tab_lon = np.arange(-180, 180, 2)
+    tab_lat = -np.arange(-90, 90, 2)
     with h5py.File(no2_frac_file) as f:
         data = f["Geophysical Data"]["f_no2_200m"][()]
     func = RGI((tab_lat, tab_lon), data)
+
     return func(np.array([lat, lon]).transpose())
 
 
 def no2conc(no2file, lon, lat, month):
     print(f"Opening NO2 file {no2file}")
-    tab_lon = np.linspace(-180, 180, 1440)
-    tab_lat = -np.linspace(-90, 90, 720)
+    tab_lon = np.arange(-180, 180, 0.25)
+    tab_lat = -np.arange(-90, 90, 0.25)
     with h5py.File(no2file) as f:
         tot = f["Geophysical Data"][f"tot_no2_{month:02d}"][()]
         trop = f["Geophysical Data"][f"trop_no2_{month:02d}"][()]
@@ -138,8 +138,7 @@ def no2conc(no2file, lon, lat, month):
 def ozone_climatology(file, day, lon, lat):
     print(f"Opening ozone file {file}")
     tab_lon = np.arange(-180, 180, 1)
-    # tab_lat = -np.arange(-90, 90, 1)
-    tab_lat = -np.linspace(90, -90, 180)
+    tab_lat = -np.arange(-90, 90, 1)
     with h5py.File(file) as f:
         data = f["Geophysical Data"][f"ozone_mean_{day:03d}"][()]
     func = RGI((tab_lat, tab_lon), data)

@@ -19,15 +19,18 @@ def test_set():
     }
     anc = Ancillary()
     anc.set(lat, lon, dt, settings)
-    anc.rh = None
-    anc.ws = None
-    anc.wd = None
-    anc.pr = None
-    anc.wv = None  # precipitable water (water vapor)
-    anc.oz = None  # ozone
+    assert np.all(np.isclose(anc.rh, 71.3460312, atol=1e-7))
+    assert np.all(np.isclose(anc.ws, 3.78513718, atol=1e-7))
+    assert np.all(np.isclose(anc.wd, 36.5364418, atol=1e-7))
+    assert np.all(np.isclose(anc.pr, 1018.85895, atol=1e-7))
+
+    # precipitable water (water vapor)
+    assert np.all(np.isclose(anc.wv, 2.63046503, atol=1e-7))
+
+    # ozone
+    # assert np.all(np.isclose(anc.oz, 0.268703669, atol=1e-7))
 
     # no2 and fraction
-    anc.no2_tropo = None
-    anc.no2_strat = None
-    anc.no2_frac = None
-    # assert np.isclose(results, 71.3460312, atol=1e-7)
+    # assert np.all(np.isclose(anc.no2_tropo, 3.50783159e15, atol=1e-7))
+    # assert np.all(np.isclose(anc.no2_strat, 2.74156191e15, atol=1e-7))
+    # assert np.all(np.isclose(anc.no2_frac, 0.53581202, atol=1e-7))

@@ -4,10 +4,7 @@ import h5py
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator, interp1d
 
-from aer_struc import AEStr as aestr
 from oel_util.libgenutils.genutils import BAD_FLT, BAD_INT
-from input_struc import Instr as instr
-from l2_struc import L2str
 from l12_parms import STDPR
 
 p0 = STDPR
