@@ -1,6 +1,5 @@
-from tkinter import N
 import numpy as np
-
+from ancillary import Ancillary
 import atmocor1
 from libl1.goci import GOCIL1
 from oel_hdf4.filetype.filetype import FileType
@@ -8,28 +7,41 @@ from oel_hdf4.libnav.esdist import esdist as esdist_
 from atmocor1 import atmocor1
 
 FATAL_ERROR = 1
+OFF = 0
+ON = 1
 
 
 class Level1:
     def __init__(self):
         self.name = None
         self.format = None
-        self.sensor_id = None
-        self.subsensor_id = None
 
-        # sensor characteristics
-        self.iwave = None
+        # sensor information
+        self.sensorinfo = None
 
         self.fsol = None
+        self.Fo = None
+
+        self.Lt = None
+
+        # Rayleigh
+        self.Lr = None
+
+        # white-cap radiances at TOA
+        self.tLf = None
+
+        # add surface reflectance
+        self.rhos = None
+        self.airmass = None
 
     def open(self):
         pass
 
-    def read(self):
+    def read(self, sline, eline, spixl, epixl):
         match self.format:
             case FileType.FT_GOCIL1B:
                 sensor_l1 = GOCIL1()
-                sensor_l1.open(self.name)
+                sensor_l1.open(self.name, sline, eline, spixl, epixl)
                 self.spatialResolution = "500 m"
 
             case _:
@@ -44,6 +56,7 @@ class Level1:
         self.sola = sensor_l1.sola
         self.senz = sensor_l1.senz
         self.csenz = np.cos(np.deg2rad(self.senz))
+        self.airmass = 1.0 / self.csolz + 1.0 / self.csenz
         self.sena = sensor_l1.sena
 
         # Compute relative azimuth
@@ -52,11 +65,9 @@ class Level1:
         delphi[delphi > 180.0] = delphi[delphi > 180.0] - 360.0
         self.delphi = delphi
 
-        # Apply vicarious calibration
-        # self.Lt = self.Lt * l1_input.gain + l1_input.offset
+        self.Lt = sensor_l1.Lt
 
         # Scattering angle
-
         temp = np.sqrt(
             (1.0 - self.csenz * self.csenz) * (1.0 - self.csolz * self.csolz)
         ) * np.cos(np.deg2rad(self.delphi))
@@ -65,7 +76,7 @@ class Level1:
 
         self.datetime = sensor_l1.time_obj_utc
 
-    def load(self, settings: dict):
+    def load(self, settings: dict, ancillary: Ancillary):
         print(f"Loading land mask information from {settings["land"]}")
         print(f"Loading DEM information from {settings["demfile"]}")
         print(f"Loading ice mask file from {settings["icefile"]}")
@@ -78,5 +89,9 @@ class Level1:
         esdist = esdist_(self.datetime.year, day_of_year, ms)
         self.fsol = np.power(1.0 / esdist, 2)
 
-        self.Fo = self.Fobar * self.fsol
-        atmocor1(self, settings)
+        self.Fo = self.sensorinfo.F0 * self.fsol
+
+        # Apply vicarious calibration
+        self.Lt = self.Lt * settings["gain"] + settings["offset"]
+
+        atmocor1(self, settings, ancillary)

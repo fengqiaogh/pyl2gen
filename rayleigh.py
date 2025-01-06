@@ -48,7 +48,6 @@ class Rayleigh:
                 # I component
                 i_ray_tab = f["i_ray"][()]
 
-            tmp = np.zeros((NWIND, NSOL, NSEN))
             ray_i = np.sum(
                 [
                     RegularGridInterpolator(

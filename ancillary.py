@@ -116,7 +116,7 @@ def no2_frac_(no2_frac_file, lon, lat):
         data = f["Geophysical Data"]["f_no2_200m"][()]
     func = RGI((tab_lat, tab_lon), data)
 
-    return func(np.array([lat, lon]).transpose())
+    return func(np.stack([lat, lon], axis=-1))
 
 
 def no2conc(no2file, lon, lat, month):
@@ -127,9 +127,9 @@ def no2conc(no2file, lon, lat, month):
         tot = f["Geophysical Data"][f"tot_no2_{month:02d}"][()]
         trop = f["Geophysical Data"][f"trop_no2_{month:02d}"][()]
     tot_func = RGI((tab_lat, tab_lon), tot)
-    total = tot_func(np.array([lat, lon]).transpose())
+    total = tot_func(np.stack([lat, lon], axis=-1))
     trop_func = RGI((tab_lat, tab_lon), trop)
-    tropo = trop_func(np.array([lat, lon]).transpose())
+    tropo = trop_func(np.stack([lat, lon], axis=-1))
     no2_strat = np.maximum(total - tropo, 0.0)
     no2_tropo = np.maximum(tropo, 0.0)
     return no2_tropo, no2_strat
@@ -142,7 +142,7 @@ def ozone_climatology(file, day, lon, lat):
     with h5py.File(file) as f:
         data = f["Geophysical Data"][f"ozone_mean_{day:03d}"][()]
     func = RGI((tab_lat, tab_lon), data)
-    return func(np.array([lat, lon]).transpose())
+    return func(np.stack([lat, lon], axis=-1))
 
 
 def get_ancillary(lat, lon, dt: datetime, filename1, filename2, filename3, parmID):
@@ -160,7 +160,7 @@ def read_climatology(file1, parm_flag, month, lat, lon):
         with h5py.File(file1) as f:
             data = f[f"{month}"][parameter_key][()]
             func = RGI((tab_lat, tab_lon), data)
-            return func(np.array([lat, lon]).transpose())
+            return func(np.stack([lat, lon], axis=-1))
 
     match parm_flag:
         case 0:  # wind speed: z

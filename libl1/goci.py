@@ -36,8 +36,8 @@ class GOCIL1:
         self.Lt = None
         self.time_obj_utc = None
 
-    def open(self, name):
-
+    def open(self, name, sline, eline, spixl, epixl):
+        shape = (eline - sline, epixl - spixl, self.nbands)
         dims = np.zeros(3, dtype=np.int32)
         with h5py.File(name) as f:
             dims[1] = f["HDFEOS/POINTS/Scene Header"].attrs["number of columns"][0]
@@ -54,15 +54,19 @@ class GOCIL1:
             self.sat_pos[0] = radius_in_xy * np.cos(cpos[1])
             time_str = f["HDFEOS/POINTS/Ephemeris"].attrs["Scene Start time"]
 
-            self.latitudes, self.longitudes = self.proj4_open(f)
+            latitudes, longitudes = self.proj4_open(f)
+            self.latitudes = latitudes[sline:eline, spixl:epixl]
+            self.longitudes = longitudes[sline:eline, spixl:epixl]
 
-            self.Lt = np.zeros((self.nscans, self.npixels, self.nbands))
+            self.Lt = np.zeros(shape)
             for idx, field in enumerate(self.FIELDS):
-                data = f[f"HDFEOS/GRIDS/Image Data/Data Fields/{field}"][()]
+                data = f[f"HDFEOS/GRIDS/Image Data/Data Fields/{field}"][()][
+                    sline:eline, spixl:epixl
+                ]
                 self.Lt[:, :, idx] = data * 1e-7
 
-        self.slot_asg, self.slot_rel_time = slot_init(name, dims)
-
+        slot_asg, self.slot_rel_time = slot_init(name, dims)
+        self.slot_asg = slot_asg[sline:eline, spixl:epixl]
         if want_verbose:
             print(f"GOCI Level-1B {name}")
 
@@ -78,7 +82,7 @@ class GOCIL1:
         if want_verbose:
             print("GOCI using internal navigation")
 
-        solz, sola = self.sunangs(self.latitudes, self.longitudes)
+        solz, sola = self.sunangs(shape, self.latitudes, self.longitudes)
         sola[sola > 180] = sola[sola > 180] - 360
         self.solz = solz
         self.sola = sola
@@ -88,9 +92,9 @@ class GOCIL1:
         self.senz = senz
         self.sena = sena
 
-    def sunangs(self, latitudes, longitudes):
-        solz = np.zeros((self.nscans, self.npixels), np.float32)
-        sola = np.zeros((self.nscans, self.npixels), np.float32)
+    def sunangs(self, shape, latitudes, longitudes):
+        solz = np.zeros((shape[0], shape[1]), np.float32)
+        sola = np.zeros((shape[0], shape[1]), np.float32)
         for i in range(self.nslot):
             lat = latitudes[self.slot_asg == i]
             lon = longitudes[self.slot_asg == i]
