@@ -73,9 +73,6 @@ class AerModTabStr:
 
 
 class Aerosol:
-    nsd = 10
-    rhtab = []
-    aer_iter_min = 1
 
     def __init__(
         self,
@@ -90,8 +87,11 @@ class Aerosol:
         aer_iter_max: np.int32,
         rhoamin: np.float32,
     ):
+        self.nsd = 10
+        self.rhtab = []
         self.sensorID = sensorID
         self.wave = wave
+        self.aer_iter_min = 1
         self.aer_iter_max = aer_iter_max
         self.nmodels = nmodels
         self.nir_s = iwnir_s_in
@@ -169,7 +169,7 @@ class Aerosol:
                 )
                 print(f"Extrapolating from {self.wave[self.nir_l]:4.1f} nm")
 
-    def get(self, Fo, La1, csolz, csenz, wv, rh, pr, taur, solz, senz, phi):
+    def get(self, Fo, La1, csolz, csenz, rh, pr, taur, solz, senz, phi):
         radref = np.pi / Fo / csolz
 
         # convert input aerosol radiances to relectance
@@ -192,11 +192,11 @@ class Aerosol:
                     taua,
                     t_sol,
                     t_sen,
-                ) = self.rhaer(wv, rh, pr, taur, rhoa, solz, senz, phi)
+                ) = self.rhaer(rh, pr, taur, rhoa, solz, senz, phi)
         La2 = rhoa / radref
         return La2, t_sol, t_sen, eps, taua
 
-    def ahmader(self, nmodels, mindx, wv, rhoa, solz, senz, phi):
+    def ahmader(self, nmodels, mindx, rhoa, solz, senz, phi):
         (
             modmin,
             modmax,
@@ -208,11 +208,11 @@ class Aerosol:
             rho_pred_min,
             tau_aer,
             rho_aer,
-        ) = self.ahmad_atm_corr(nmodels, mindx, wv, rhoa, solz, senz, phi)
+        ) = self.ahmad_atm_corr(nmodels, mindx, rhoa, solz, senz, phi)
         rhoa = rho_aer
         return rhoa, modmin, modmax, modrat, epsnir, tau_pred_min, tau_pred_max
 
-    def rhaer(self, wv, rh, pr, taur, rhoa, solz, senz, phi):
+    def rhaer(self, rh, pr, taur, rhoa, solz, senz, phi):
         rhoa1 = rhoa
         rhoa2 = rhoa
         # rhoa = BAD_FLT
@@ -237,10 +237,9 @@ class Aerosol:
             eps1,
             tau_pred_min1,
             tau_pred_max1,
-        ) = self.ahmader(self.nsd, mindx1, wv, rhoa1, solz, senz, phi)
+        ) = self.ahmader(self.nsd, mindx1, rhoa1, solz, senz, phi)
 
         taua1, tsol1, tsen1 = self.diff_tran(
-            wv,
             pr,
             taur,
             modmin1,
@@ -264,10 +263,9 @@ class Aerosol:
                 eps2,
                 tau_pred_min2,
                 tau_pred_max2,
-            ) = self.ahmader(self.nsd, mindx2, wv, rhoa, solz, senz, phi)
+            ) = self.ahmader(self.nsd, mindx2, rhoa, solz, senz, phi)
 
             taua2, tsol2, tsen2 = self.diff_tran(
-                wv,
                 pr,
                 taur,
                 modmin2,
@@ -306,7 +304,7 @@ class Aerosol:
             tsen,
         )
 
-    def ahmad_atm_corr(self, nmodels, mindx, wv, rhoa, solz, senz, phi):
+    def ahmad_atm_corr(self, nmodels, mindx, rhoa, solz, senz, phi):
 
         tau_iwnir_l = np.zeros(nmodels)
         lg_tau_iwnir_s = np.zeros(nmodels)
@@ -474,7 +472,6 @@ class Aerosol:
 
     def diff_tran(
         self,
-        wv,
         pr,
         taur,
         modmin,
