@@ -7,8 +7,6 @@ class Chl:
         self.chlmin = 0.001
         self.chlmax = 1000.0
         self.chlbad = BAD_FLT
-        self.minrat = 0.21
-        self.maxrat = 30.0
 
         # chl hu
         ib1 = bindex.get(443)
@@ -32,6 +30,19 @@ class Chl:
             print(
                 f"chl_hu: using {wave[self.ib1]:7.2f} {wave[self.ib2]:7.2f} {wave[self.ib3]:7.2f}"
             )
+        # chl oc3
+        self.chloc3_wave = np.array([443, 489, 555])
+        self.chloc3_coef = np.array([0.2515, -2.3798, 1.5823, -0.6372, -0.5692])
+        oc3_ib1 = bindex.get(self.chloc3_wave[0])
+        oc3_ib2 = bindex.get(self.chloc3_wave[1])
+        oc3_ib3 = bindex.get(self.chloc3_wave[2])
+        if oc3_ib1 < 0 or oc3_ib2 < 0 or oc3_ib3 < 0:
+            print("chl_oc3: incompatible sensor wavelengths for this algorithm")
+            exit(1)
+        else:
+            self.oc3_ib1 = oc3_ib1
+            self.oc3_ib2 = oc3_ib2
+            self.oc3_ib3 = oc3_ib3
 
     def get(self, Rrs, method="oci"):
         match method:
@@ -63,16 +74,16 @@ class Chl:
         return chl
 
     def chl_ocx(self, Rrs):
+        chl = self.chlbad
         chl = self.chl_oc3(Rrs)
         return chl
 
     def chl_oc3(self, Rrs):
-        a = np.array([0.25150001, -2.37980008, 1.58229995, -0.637199998, -0.569199979])
         minrat = 0.201
         maxrat = 30
-        ib1 = 1
-        ib2 = 2
-        ib3 = 3
+        ib1 = self.oc3_ib1
+        ib2 = self.oc3_ib2
+        ib3 = self.oc3_ib3
         Rrs1 = Rrs[ib1]
         Rrs2 = Rrs[ib2]
         Rrs3 = Rrs[ib3]
@@ -82,13 +93,30 @@ class Chl:
             if rat > minrat and rat < maxrat:
                 rat = np.log10(rat)
                 chl = np.power(
-                    10, (a[0] + rat * (a[1] + rat * (a[2] + rat * (a[3] + rat * a[4]))))
+                    10,
+                    (
+                        self.chloc3_coef[0]
+                        + rat
+                        * (
+                            self.chloc3_coef[1]
+                            + rat
+                            * (
+                                self.chloc3_coef[2]
+                                + rat
+                                * (self.chloc3_coef[3] + rat * self.chloc3_coef[4])
+                            )
+                        )
+                    ),
                 )
         else:
             pass
+        chl = max(chl, self.chlmin)
+        chl = min(chl, self.chlmax)
         return chl
 
     def chl_hu(self, Rrs):
+        minrat = 0.21
+        maxrat = 30.0
         w = np.array([443, 555, 670])
         a = np.array([-0.4287, 230.47])
 

@@ -33,6 +33,7 @@ def atmocor1(level1, settings: dict, ancillary: Ancillary):
     )
     level1.tg_sol = tg_sol
     level1.tg_sen = tg_sen
+    level1.tg = tg
 
     # white-cap radiances at TOA
     rhof = whitecaps(wave, ancillary.ws, ws_max=settings["wsmax"])
