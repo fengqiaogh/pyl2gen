@@ -7,7 +7,6 @@ from oel_hdf4.libnav.esdist import esdist as esdist_
 from atmocor1 import atmocor1
 from polcor import polcor
 from libl1.setflags import Flag
-from libl1.windex import Bindex
 
 FATAL_ERROR = 1
 OFF = 0
@@ -64,8 +63,6 @@ class Level1:
         self.glint_coef_q = None
         self.glint_coef_u = None
 
-        self.bindex = Bindex()
-
     def read(self, sline, eline, spixl, epixl):
 
         match self.format:
@@ -97,8 +94,6 @@ class Level1:
         self._compute_relative_azimuth()
         self._compute_scattering_angle()
         self.datetime = sensor_l1.time_obj_utc
-
-        self.bindex.set(self.wave, BANDW)
 
     def _compute_relative_azimuth(self):
         # Compute relative azimuth

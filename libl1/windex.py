@@ -1,14 +1,17 @@
 import numpy as np
+from libl1.l1 import BANDW
 
 
 class Bindex:
-    def __init__(self):
-        self.WAVE_INDEX_NUM = 13000
-        self.WAVE_INDEX_MIN = 300
-        self.WAVE_INDEX_MAX = self.WAVE_INDEX_MIN + self.WAVE_INDEX_NUM
-        self.band_index = np.full(self.WAVE_INDEX_NUM + 1, -1, dtype=np.int32)
+    WAVE_INDEX_NUM = 13000
+    WAVE_INDEX_MIN = 300
+    WAVE_INDEX_MAX = WAVE_INDEX_MIN + WAVE_INDEX_NUM
 
-    def set(self, wave: np.ndarray, dwave_vswir=10):
+    def __init__(self, wave):
+        self.band_index = np.full(self.WAVE_INDEX_NUM + 1, -1, dtype=np.int32)
+        self.set(wave)
+
+    def set(self, wave: np.ndarray, dwave_vswir=BANDW):
         dwave = np.full_like(wave, dwave_vswir, dtype=np.int32)
         dwave[wave > 3000] = 1000
         for iw, wa in enumerate(wave):
@@ -34,14 +37,29 @@ class Bindex:
             return -1
 
     def get_555(self):
-        ib = self.get(547)
-        if ib < 0:
-            ib = self.get(550)
-        if ib < 0:
-            ib = self.get(555)
-        if ib < 0:
-            ib = self.get(560)
-        if ib < 0:
-            ib = self.get(565)
+        for wave in [547, 550, 555, 560, 565]:
+            ib = self.get(wave)
+            if ib >= 0:
+                return ib
+        return -1
 
-        return ib
+
+def windex(wave, twave):
+    # 设置一个很大的最小差异
+    wdiffmin = 99999.0
+    index = -1
+
+    # 遍历所有波长
+    for iw, tw in enumerate(twave):
+        # 如果找到了完全匹配的波长
+        if tw == wave:
+            index = iw
+            break
+
+        # 查找最接近的波长
+        wdiff = abs(tw - wave)
+        if wdiff < wdiffmin:
+            wdiffmin = wdiff
+            index = iw
+
+    return index

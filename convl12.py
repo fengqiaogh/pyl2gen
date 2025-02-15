@@ -2,11 +2,15 @@ from atmocor2 import atmocor2
 from aerosol import Aerosol
 import numpy as np
 from chl import Chl
+from libl1.windex import Bindex
 
 
 def convl12(level1, level2, ancillary, settings):
     sensorID = level1.sensorinfo.sensorId
-    wave = level1.sensorinfo.Lambda
+    wave = level1.wave
+    aw = level1.sensorinfo.aw
+    bbw = level1.sensorinfo.bbw
+
     OCDATAROOT = settings["OCDATAROOT"]
     aermodfile = settings.get("aermodfile", "").replace(
         "$OCDATAROOT", OCDATAROOT.as_posix()
@@ -14,12 +18,12 @@ def convl12(level1, level2, ancillary, settings):
     aermodels = settings["aermodels"]
     naermodels = settings["naermodels"]
     aer_opt = settings["aer_opt"]
-
     aer_iter_max = settings["aer_iter_max"]
     nir_s = np.argwhere(wave == settings["aer_wave_short"])[0][0]
     nir_l = np.argwhere(wave == settings["aer_wave_long"])[0][0]
     aer_base = np.argwhere(wave == settings["aer_wave_base"])[0][0]
     rhoamin = settings["rhoamin"]
+    fqfile = settings.get("fqfile", "").replace("$OCDATAROOT", OCDATAROOT.as_posix())
 
     if nir_s < 0 or nir_l < 0:
         raise ValueError(
@@ -60,35 +64,27 @@ def convl12(level1, level2, ancillary, settings):
                 aer_iter_max = settings["aer_iter_max"]
                 print("NIR correction via input Rrs enabled.")
 
+    bindex = Bindex(wave)
     if want_nirLw or want_nirRrs:
-        red = np.argwhere(wave == 670)
-        if red.size == 0:
-            red = np.argwhere(wave == 680)
-            if red.size == 0:
-                red = np.argwhere(wave == 620)
-                if red.size == 0:
-                    red = np.argwhere(wave == 765)
-                    if red.size == 0:
-                        red = np.argwhere(wave == 655)
-                        if red.size == 0:
-                            red = np.argwhere(wave == 664)  # added for MSI
-                            if red.size == 0:
-                                print("can't find red band")
-                                exit(1)
+        red = -1
+        for wa in np.array([670, 680, 620, 765, 655, 664]):
+            red = bindex.get(wa)
+            if red >= 0:
+                break
+        if red < 0:
+            print("can't find red band")
+            exit(1)
 
-        green = np.argwhere(wave == 550)
-        if green.size == 0:
-            green = np.argwhere(wave == 555)
-            if green.size == 0:
-                green = np.argwhere(wave == 560)
-                if green.size == 0:
-                    green = np.argwhere(wave == 565)
-                    if green.size == 0:
-                        print("can't find green band")
-                        exit(1)
+        green = -1
+        for wa in np.array([550, 555, 560, 565]):
+            green = bindex.get(wa)
+            if green >= 0:
+                break
+        if green < 0:
+            print("can't find green band")
+            exit(1)
 
-    bindex = level1.bindex
-    chlorophyll = Chl(wave, bindex)
+    chlorophyll = Chl(wave, fqfile, aw, bbw)
     # 在这里开始逐像素运行，方便以后并行处理
     # t_sol = level1.t_sol
     # t_sen = level1.t_sen
@@ -192,6 +188,7 @@ def convl12(level1, level2, ancillary, settings):
         ]
     )
     num_iter, eps, Rrs, chl = atmocor2(
+        wave,
         Lt,
         Lr,
         tLf,
@@ -210,4 +207,5 @@ def convl12(level1, level2, ancillary, settings):
         fsol,
         Fobar,
         chlorophyll,
+        red,
     )

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from collections import ChainMap
-
+import numpy as np
 from libl1.l1 import Level1
 from oel_hdf4.filetype.filetype import FileFormat
 from oel_util.libgenutils.genutils_globals import want_verbose
@@ -31,8 +31,8 @@ def msl12_input(level1: Level1, cli_args: dict):
     sensor_info.rdsensorinfo(OCDATAROOT)
 
     level1.sensorinfo = sensor_info
-    level1.wave = sensor_info.Lambda
-
+    wave = sensor_info.Lambda
+    level1.wave = wave.astype(np.float32)
     sensor_defaults = OCDATAROOT.joinpath(
         sensor_info.sensorDir, f"{l1_defaults_prefix}_defaults.json"
     )

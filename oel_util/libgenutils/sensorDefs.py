@@ -1,0 +1,1 @@
+MAXWAVE_VIS = 720

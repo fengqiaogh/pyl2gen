@@ -3,6 +3,7 @@ from l12_parms import STDPR
 
 
 def atmocor2(
+    wave,
     Lt,
     Lr,
     tLf,
@@ -21,6 +22,7 @@ def atmocor2(
     fsol,
     Fobar,
     chlorophyll,
+    red,
 ):
     want_ramp = 1
     cbot = 0.7
@@ -30,6 +32,7 @@ def atmocor2(
     seed_chl = 0.0
     seed_green = 0.0
     seed_red = 0.0
+    nir_chg = 0.02
 
     daer = np.maximum(aerosol.nir_l - aerosol.nir_s, 1)
     cslp = 1.0 / (ctop - cbot)
@@ -81,10 +84,22 @@ def atmocor2(
     # Begin iterations for aerosol with corrections for non-zero nLw(NIR)
     while not last_iter:
         iter = iter + 1
+
         # Initialize tLw as surface + aerosol radiance
         tLw = Ltemp
 
         # Adjust for non-zero NIR water-leaving radiances using IOP model
+        rhown_nir = chlorophyll.get_rhown_eval(
+            wave,
+            Rrs,
+            aerosol.nir_s,
+            aerosol.nir_l,
+            solz,
+            senz,
+            phi,
+            chl,
+            rhown_nir,
+        )
 
         # Convert NIR reflectance to TOA W-L radiance
         tLw_nir = rhown_nir / np.pi * Fo * mu0 * t_sol * t_sen / brdf
@@ -92,12 +107,10 @@ def atmocor2(
         # Iteration damping
         tLw_nir = (1.0 - df) * tLw_nir + df * last_tLw_nir
 
-        # Ramp-up ?
-        if want_ramp:
-            if chl > 0.0 and chl <= cbot:
-                tLw_nir = 0.0
-            elif chl > cbot and chl < ctop:
-                tLw_nir = tLw_nir * (cslp * chl + cint)
+        if chl > 0.0 and chl <= cbot:
+            tLw_nir = 0.0
+        elif chl > cbot and chl < ctop:
+            tLw_nir = tLw_nir * (cslp * chl + cint)
 
         # Remove estimated NIR water-leaving radiance
         tLw = tLw - tLw_nir
@@ -114,7 +127,7 @@ def atmocor2(
 
         # Compute new estimated chlorophyll
         refl_nir = Rrs[red]
-        last_tLw_nir = tLw_nir
+        last_tLw_nir[-2:] = tLw_nir[-2:]
 
         Rrs[:-2] = nLw[:-2] / Fobar[:-2]
 
@@ -123,8 +136,16 @@ def atmocor2(
         # Shall we continue iterating
         if iter > iter_max:
             last_iter = 1
+        elif (
+            np.abs(refl_nir - last_refl_nir) < np.abs(nir_chg * refl_nir)
+            or refl_nir < 0.0
+        ):
+            last_iter = 1
+        else:
+            pass
 
         last_refl_nir = refl_nir
+
     # end of iteration loop
     num_iter = iter
 
@@ -132,6 +153,6 @@ def atmocor2(
     Rrs = nLw / Fobar
 
     # Compute final chl from final nLw
-    chl = get_default_chl(Rrs)
+    chl = chlorophyll.get(Rrs)
 
     return num_iter, eps, Rrs, chl
